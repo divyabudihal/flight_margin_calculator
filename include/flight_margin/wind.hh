@@ -6,7 +6,7 @@ namespace flight_margin {
 
 class Wind {
  public:
-  Wind() = delete;
+  Wind() = default;
   Wind(const Eigen::Vector2d& origin, const double& speed_ms, const double& direction_deg);
 
   Eigen::Vector2d origin() const { return origin_; }

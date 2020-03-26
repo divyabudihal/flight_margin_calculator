@@ -14,6 +14,7 @@ include_directories(
 add_library(flight_margin 
   src/wind.cc
   src/flight_margin.cc
+  src/semivariogram.cc
 )
 
 # add_executable(execute_mission 

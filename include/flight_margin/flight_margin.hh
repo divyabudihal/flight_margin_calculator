@@ -2,9 +2,11 @@
 
 #include <flight_margin/wind.hh>
 
-#include <yaml-cpp/yaml.h>
+#include <util/semivariogram.hh>
+
 #include <eigen3/Eigen/Core>
 #include <vector>
+#include <yaml-cpp/yaml.h>
 
 namespace flight_margin {
 
@@ -21,6 +23,10 @@ class FlightMargin {
 
  private:
   double discretization_frequency_hz_;
+  double wind_radius_m_;
+  unsigned int wind_max_neighbours_;
+
+  util::Semivariogram semivariogram_;
 
   double PathFlightTime(const Eigen::Vector2d& start,
                         const Eigen::Vector2d& end, const double& airspeed,
