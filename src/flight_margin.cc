@@ -2,6 +2,9 @@
 
 #include <eigen3/Eigen/Dense>
 #include <iostream>
+#include <matplotlib/matplotlib.hh>
+
+namespace plt = matplotlibcpp;
 
 using namespace flight_margin;
 
@@ -11,7 +14,7 @@ FlightMargin::FlightMargin(const YAML::Node& config)
     discretization_frequency_hz_ =
         config["discretization_frequency_hz"].as<double>();
     wind_radius_m_ = config["wind_radius_km"].as<double>() * 1000;
-    wind_max_neighbours_ = config["wind_max_neighbours"].as<unsigned int>();
+    wind_max_neighbours_ = config["wind_max_neighbours"].as<int>();
   } catch (const YAML::Exception& e) {
     std::cout
         << "Flight Margin Calculator constructor failed with an exception: "
@@ -21,8 +24,9 @@ FlightMargin::FlightMargin(const YAML::Node& config)
 
 Eigen::Vector2d FlightMargin::CalculateWindVector(
     const Eigen::Vector2d& position, const std::vector<Wind>& winds) const {
-  // Use Kriging model to compute wind vector
+  // Assume no duplicated wind points
 
+  // Use Kriging model to compute wind vector
   std::map<double, Wind> distance_to_wind;
   for (auto const& wind : winds) {
     double distance = (wind.origin() - position).norm();
@@ -91,14 +95,16 @@ Eigen::Vector2d FlightMargin::CalculateWindVector(
   Eigen::VectorXd W = C.colPivHouseholderQr().solve(D);
 
   // Apply Weights
-  Eigen::Vector2d wind_speed_ms;
+  Eigen::Vector2d wind_speed_ms(0, 0);
 
   i = 0;
   for (auto& [distance, wind] : distance_to_wind) {
     wind_speed_ms += W[i] * wind.vector();
     i++;
   }
-
+  plt::quiver(
+      std::vector<double>{position[0]}, std::vector<double>{position[1]},
+      std::vector<double>{position[0]}, std::vector<double>{position[1]});
   return wind_speed_ms;
 }
 
@@ -116,7 +122,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
   double segment_distance = segment_increment.norm();
   auto unit_segment = segment_increment / segment_distance;
 
-  double path_flight_time = 0;
+  double path_flight_time_s = 0;
   auto start_segment = start_path;
   for (int i = 0; i < num_segments; i++) {
     auto end_segment = start_segment + segment_increment;
@@ -125,22 +131,39 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
     // ground speed = air speed + wind speed
     auto groundspeed_ms = airspeed_mag_ms * unit_segment + windspeed_ms;
 
-    // Use sine law to calculate groundspeed distance magnitude
-    // Let A = ground , B = segment, C = wind
-    // Calculate angle betwee airspeed vector and windspeed vector
+    if (windspeed_ms.norm() <= 0.001) {
+      // Windspeed vector is 0
+      // Groundspeed = airspeed
+      path_flight_time_s += segment_distance / airspeed_mag_ms;
+    } else {
+      auto unit_groundspeed_ms = groundspeed_ms / groundspeed_ms.norm();
+      auto unit_windspeed_ms = windspeed_ms / windspeed_ms.norm();
 
-    auto unit_groundspeed_ms = groundspeed_ms / groundspeed_ms.norm();
-    auto unit_windspeed_ms = windspeed_ms / windspeed_ms.norm();
+      // Create a triangle with the segment, groundspeed, and windspeed vectors
+      // Calculate angles opposite to the segment and groundspeed vectors
+      double angle_segment_rad =
+          acos(unit_groundspeed_ms.dot(unit_windspeed_ms));
+      double angle_ground_rad = acos(unit_segment.dot(unit_windspeed_ms));
 
-    double angle_segment_rad = acos(unit_groundspeed_ms.dot(unit_windspeed_ms));
-    double angle_ground_rad = acos(unit_segment.dot(unit_windspeed_ms));
+      // Use angles to calculate ground distance
+      double ground_distance_m;
+      if (abs(angle_segment_rad - M_PI / 2.0) < 0.001) {
+        // Segment is the hypotenuse of a right triangle
+        ground_distance_m = segment_distance * sin(angle_ground_rad);
+      } else if (abs(angle_ground_rad - M_PI / 2.0) < 0.001) {
+        // Ground distance in the hypotenuse of a right triangle
+        ground_distance_m = segment_distance / sin(angle_segment_rad);
+      } else {
+        // Use sine law to calculate groundspeed distance magnitude
+        ground_distance_m =
+            sin(angle_ground_rad) * segment_distance / sin(angle_segment_rad);
+      }
 
-    double ground_distance_m =
-        angle_ground_rad * segment_distance / angle_segment_rad;
-
-    // Calculate angle between groundspeed vector and airspeed vector
-    path_flight_time += ground_distance_m / groundspeed_ms.norm();
+      // Calculate angle between groundspeed vector and airspeed vector
+      path_flight_time_s += ground_distance_m / groundspeed_ms.norm();
+    }
   }
+  return path_flight_time_s;
 }
 
 double FlightMargin::RemainingBattery(
@@ -148,11 +171,14 @@ double FlightMargin::RemainingBattery(
     const std::vector<Eigen::Vector2d>& waypoints,
     const std::vector<Wind> winds, const double& airspeed_mag_ms,
     const double& required_power_Wh) const {
-  double flight_time = 0;
-  // Assume no duplicated wind points
-  // Discretize paths between waypoints based on discretization frequency
+  double flight_time_s = 0;
+
   for (int index = 1; index < waypoints.size(); index++) {
-    flight_time += PathFlightTime(waypoints[index - 1], waypoints[index],
-                                  airspeed_mag_ms, winds);
+    flight_time_s += PathFlightTime(waypoints[index - 1], waypoints[index],
+                                    airspeed_mag_ms, winds);
   }
+
+  double energy_usage_Wh = required_power_Wh * flight_time_s * 60.0 / 3600.0;
+  plt::show();
+  return initial_battery_Wh - energy_usage_Wh;
 }

@@ -9,7 +9,7 @@ Semivariogram::Semivariogram(const YAML::Node& config) {
   try {
     nugget_ = config["nugget"].as<double>();
     sill_ = config["sill"].as<double>();
-    range_m_ = config["range_km_"].as<double>() * 1000;
+    range_m_ = config["range_km"].as<double>() * 1000;
   } catch (const YAML::Exception& e) {
     std::cout << "Semivariogram constructor failed with an exception: "
               << e.what();
