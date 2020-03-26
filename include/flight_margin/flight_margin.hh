@@ -5,11 +5,19 @@
 #include <util/semivariogram.hh>
 
 #include <eigen3/Eigen/Core>
-#include <vector>
 #include <yaml-cpp/yaml.h>
+
+#include <vector>
 
 namespace flight_margin {
 
+/**
+ * Flight Margin Calculator Class
+ *
+ * @brief This class uses calculates remaining battery life for a set of
+ * waypoints using the desired airspeed and wind vectors
+ *
+ */
 class FlightMargin {
  public:
   FlightMargin() = delete;
@@ -22,10 +30,12 @@ class FlightMargin {
                           const double& required_power_Wh) const;
 
  private:
+  // Config variables
   double discretization_frequency_hz_;
   double wind_radius_m_;
   unsigned int wind_max_neighbours_;
 
+  // Utility semivariogram class
   util::Semivariogram semivariogram_;
 
   double PathFlightTime(const Eigen::Vector2d& start,

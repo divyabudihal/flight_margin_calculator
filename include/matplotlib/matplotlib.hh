@@ -1,3 +1,6 @@
+/**
+ * Header found at: https://github.com/lava/matplotlib-cpp
+ */
 #pragma once
 
 #include <vector>
@@ -833,6 +836,7 @@ bool quiver(const std::vector<NumericX>& x, const std::vector<NumericY>& y, cons
     {
         PyDict_SetItemString(kwargs, it->first.c_str(), PyUnicode_FromString(it->second.c_str()));
     }
+    // PyDict_SetItemString(kwargs, std::string("scale").c_str(), PyLong_FromLong(0.));
 
     PyObject* res = PyObject_Call(
             detail::_interpreter::get().s_python_function_quiver, plot_args, kwargs);
