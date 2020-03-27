@@ -1,8 +1,8 @@
 discretization_frequency_hz: 0.1
-wind_radius_km: 10
+wind_radius_km: 0.3
 wind_max_neighbours: 5
 
 semivariogram:
   nugget: 0.4
   sill: 1.6
-  range_km: 80
+  range_km: 0.05

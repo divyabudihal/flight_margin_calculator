@@ -19,5 +19,5 @@ Wind::Wind(const Eigen::Vector2d& origin, const double& speed_ms,
     : origin_(origin) {
   // Rotate speed vector in the direction specified (cardinal direction)
   Eigen::Rotation2D<double> rot2d(DegToRad(direction_deg));
-  vector_ = rot2d * Eigen::Vector2d(0.0, speed_ms);
+  velocity_ = rot2d * Eigen::Vector2d(0.0, speed_ms);
 }

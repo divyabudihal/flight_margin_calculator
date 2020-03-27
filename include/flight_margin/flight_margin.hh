@@ -1,11 +1,11 @@
 #pragma once
 
+#include <flight_margin/flight_plotter.hh>
 #include <flight_margin/wind.hh>
-
 #include <util/semivariogram.hh>
 
-#include <eigen3/Eigen/Core>
 #include <yaml-cpp/yaml.h>
+#include <eigen3/Eigen/Core>
 
 #include <vector>
 
@@ -40,7 +40,8 @@ class FlightMargin {
 
   double PathFlightTime(const Eigen::Vector2d& start,
                         const Eigen::Vector2d& end, const double& airspeed,
-                        const std::vector<Wind> winds) const;
+                        const std::vector<Wind> winds,
+                        FlightPlotter& flight_plotter) const;
   Eigen::Vector2d CalculateWindVector(const Eigen::Vector2d& position,
                                       const std::vector<Wind>& winds) const;
 };

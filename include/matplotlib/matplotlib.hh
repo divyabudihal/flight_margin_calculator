@@ -665,7 +665,7 @@ bool hist(const std::vector<Numeric>& y, long bins=10,std::string color="b",
 template<typename NumericX, typename NumericY>
 bool scatter(const std::vector<NumericX>& x,
              const std::vector<NumericY>& y,
-             const double s=1.0, // The marker size in points**2
+             const double s=6.0, // The marker size in points**2
              const std::unordered_map<std::string, std::string> & keywords = {})
 {
     assert(x.size() == y.size());
@@ -836,7 +836,12 @@ bool quiver(const std::vector<NumericX>& x, const std::vector<NumericY>& y, cons
     {
         PyDict_SetItemString(kwargs, it->first.c_str(), PyUnicode_FromString(it->second.c_str()));
     }
-    // PyDict_SetItemString(kwargs, std::string("scale").c_str(), PyLong_FromLong(0.));
+    
+    PyDict_SetItemString(kwargs, std::string("scale").c_str(), PyLong_FromLong(1));
+    // PyDict_SetItemString(kwargs, std::string("width").c_str(), PyLong_FromLong(0.8));
+    PyDict_SetItemString(kwargs, std::string("headwidth").c_str(), PyLong_FromLong(2));
+    PyDict_SetItemString(kwargs, std::string("headlength").c_str(), PyLong_FromLong(2));
+    PyDict_SetItemString(kwargs, std::string("headaxislength").c_str(), PyLong_FromLong(2));
 
     PyObject* res = PyObject_Call(
             detail::_interpreter::get().s_python_function_quiver, plot_args, kwargs);

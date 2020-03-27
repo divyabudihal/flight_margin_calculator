@@ -7,12 +7,15 @@
 #include <eigen3/Eigen/Core>
 #include <matplotlib/matplotlib.hh>
 
+#include <iostream>
+
 #define ERROR_TOL 0.0001
 
 using namespace flight_margin;
 
 TEST(FlightMarginTest, OnePath_NoWind) {
-  auto config_file = "config/flight_margin.yaml";
+  std::string file_root(PROJECT_ROOT);
+  auto config_file = file_root + "/config/flight_margin.yaml";
   auto config = YAML::LoadFile(config_file);
 
   FlightMargin flight_margin(config);
@@ -32,7 +35,8 @@ TEST(FlightMarginTest, OnePath_NoWind) {
 }
 
 TEST(FlightMarginTest, OnePath_OnePerpendicularWind) {
-  auto config_file = "config/flight_margin.yaml";
+  std::string file_root(PROJECT_ROOT);
+  auto config_file = file_root + "/config/flight_margin.yaml";
   auto config = YAML::LoadFile(config_file);
 
   FlightMargin flight_margin(config);
@@ -52,7 +56,8 @@ TEST(FlightMarginTest, OnePath_OnePerpendicularWind) {
 }
 
 TEST(FlightMarginTest, OnePath_OneWind) {
-  auto config_file = "config/flight_margin.yaml";
+  std::string file_root(PROJECT_ROOT);
+  auto config_file = file_root + "/config/flight_margin.yaml";
   auto config = YAML::LoadFile(config_file);
 
   FlightMargin flight_margin(config);
@@ -65,9 +70,6 @@ TEST(FlightMarginTest, OnePath_OneWind) {
   double airspeed_mag_ms = 10;
   double required_power_Wh = 10;
 
-  //   matplotlibcpp::quiver(std::vector<double>{1}, std::vector<double>{2},
-  //   std::vector<double>{1}, std::vector<double>{2});
-
   ASSERT_NEAR(
       flight_margin.RemainingBattery(initial_battery_Wh, waypoints, winds,
                                      airspeed_mag_ms, required_power_Wh),
@@ -75,7 +77,8 @@ TEST(FlightMarginTest, OnePath_OneWind) {
 }
 
 TEST(FlightMarginTest, OnePath_TwoWinds) {
-  auto config_file = "config/flight_margin.yaml";
+  std::string file_root(PROJECT_ROOT);
+  auto config_file = file_root + "/test/config/small_scale_flight_margin.yaml";
   auto config = YAML::LoadFile(config_file);
 
   FlightMargin flight_margin(config);

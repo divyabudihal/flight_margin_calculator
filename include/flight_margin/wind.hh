@@ -16,11 +16,11 @@ class Wind {
        const double& direction_deg);
 
   Eigen::Vector2d origin() const { return origin_; }
-  Eigen::Vector2d vector() const { return vector_; }
+  Eigen::Vector2d velocity() const { return velocity_; }
 
  private:
   Eigen::Vector2d origin_;
-  Eigen::Vector2d vector_;
+  Eigen::Vector2d velocity_;
 };
 
 }  // namespace flight_margin

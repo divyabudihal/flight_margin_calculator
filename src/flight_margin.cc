@@ -1,7 +1,5 @@
 #include <flight_margin/flight_margin.hh>
 
-#include <matplotlib/matplotlib.hh>
-
 #include <eigen3/Eigen/Dense>
 
 #include <iostream>
@@ -49,15 +47,15 @@ double FlightMargin::RemainingBattery(
     const std::vector<Wind> winds, const double& airspeed_mag_ms,
     const double& required_power_Wh) const {
   double flight_time_s = 0;
-
-  for (int index = 1; index < waypoints.size(); index++) {
+  FlightPlotter flight_plotter(waypoints, winds);
+  for (unsigned int index = 1; index < waypoints.size(); index++) {
     flight_time_s += PathFlightTime(waypoints[index - 1], waypoints[index],
-                                    airspeed_mag_ms, winds);
+                                    airspeed_mag_ms, winds, flight_plotter);
   }
 
   // Calculate energy usage based on time
   double energy_usage_Wh = required_power_Wh * flight_time_s * 60.0 / 3600.0;
-  plt::show();
+  flight_plotter.Plot();
   return initial_battery_Wh - energy_usage_Wh;
 }
 
@@ -77,7 +75,8 @@ double FlightMargin::RemainingBattery(
 double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
                                     const Eigen::Vector2d& end_path,
                                     const double& airspeed_mag_ms,
-                                    const std::vector<Wind> winds) const {
+                                    const std::vector<Wind> winds,
+                                    FlightPlotter& flight_plotter) const {
   // Approximate discretization of path into segments using airspeed an
   // discretization frequency
 
@@ -91,31 +90,33 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
   auto segment_increment = path / N_segments;
   double segment_distance = segment_increment.norm();
   auto unit_segment = segment_increment / segment_distance;
-
-  std::vector<double> x_windspeed;
-  std::vector<double> y_windspeed;
-  std::vector<double> u_windspeed;
-  std::vector<double> v_windspeed;
+  auto segment_velocity = airspeed_mag_ms * unit_segment;
 
   // Initalize path flight time and starting segment position
   double path_flight_time_s = 0;
   auto start_segment = start_path;
-  for (int i = 0; i < N_segments; i++) {
+  for (unsigned int i = 0; i < N_segments; i++) {
     auto end_segment = start_segment + segment_increment;
-    auto windspeed_ms = CalculateWindVector(end_segment, winds);
-    
-    x_windspeed.push_back(end_segment[0]);
-    y_windspeed.push_back(end_segment[1]);
-    u_windspeed.push_back(windspeed_ms[0]);
-    v_windspeed.push_back(windspeed_ms[1]);
 
-    // ground speed = air speed + wind speed
-    auto groundspeed_ms = airspeed_mag_ms * unit_segment + windspeed_ms;
+    // Declare distance travel vectors for plotting
+    Eigen::Vector2d wind_travel_m, ground_travel_m;
+    // Declare segment_flight_time
+    double segment_flight_time;
+
+    // Calculate windspeed vector
+    auto windspeed_ms = CalculateWindVector(end_segment, winds);
+
+    // In order to keep airspeed constant,
+    // Ground speed = segment air speed - wind speed
+    auto groundspeed_ms = segment_velocity - windspeed_ms;
 
     if (windspeed_ms.norm() <= 0.001) {
       // Windspeed vector is 0
       // Groundspeed = airspeed
-      path_flight_time_s += segment_distance / airspeed_mag_ms;
+      wind_travel_m = Eigen::Vector2d(0, 0);
+      ground_travel_m = segment_increment;
+
+      segment_flight_time = segment_distance / airspeed_mag_ms;
     } else {
       // Calculate groundspeed and windspeed unit vectors
       auto unit_groundspeed_ms = groundspeed_ms / groundspeed_ms.norm();
@@ -127,7 +128,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
           acos(unit_groundspeed_ms.dot(unit_windspeed_ms));
       double angle_ground_rad = acos(unit_segment.dot(unit_windspeed_ms));
 
-      // Use angles to calculate ground distance
+      // Use angles to calculate distance values
       double ground_distance_m;
 
       if (abs(angle_segment_rad - M_PI / 2.0) < 0.001) {
@@ -142,16 +143,23 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
             sin(angle_ground_rad) * segment_distance / sin(angle_segment_rad);
       }
 
-      // Calculate angle between groundspeed vector and airspeed vector
-      path_flight_time_s += ground_distance_m / groundspeed_ms.norm();
+      // Calculate segment flight time
+      segment_flight_time = ground_distance_m / groundspeed_ms.norm();
+
+      // Calculate distance travel vectors
+      wind_travel_m = segment_flight_time * windspeed_ms;
+      ground_travel_m = ground_distance_m * unit_groundspeed_ms;
     }
+    // Update path flight time
+    path_flight_time_s += segment_flight_time;
+
+    // Update start of next segment
+    start_segment = end_segment;
+
+    // Add flight plotting data
+    flight_plotter.AddData(start_segment, end_segment, segment_increment,
+                           wind_travel_m, ground_travel_m, windspeed_ms);
   }
-  std::map<std::string, std::string> plot_options;
-  plot_options["units"] = "xy";
-  plot_options["scale_units"] = "xy";
-  plot_options["angles"] = "xy";
-  plt::quiver(x_windspeed, y_windspeed, u_windspeed, v_windspeed, plot_options);
-  plt::show();
 
   return path_flight_time_s;
 }
@@ -192,7 +200,7 @@ Eigen::Vector2d FlightMargin::CalculateWindVector(
     // Return the only wind vector as there is no way to approximate the spatial
     // distribution of the winds
     auto wind = distance_to_wind.begin()->second;
-    return wind.vector();
+    return wind.velocity();
   }
 
   // Sort the winds based on closest distance
@@ -250,12 +258,11 @@ Eigen::Vector2d FlightMargin::CalculateWindVector(
   // Calculate Weights
   Eigen::VectorXd W = C.colPivHouseholderQr().solve(D);
 
-  // Apply Weights
+  // Apply Weights to each wind velocity and sum
   Eigen::Vector2d windspeed_ms(0, 0);
-
-  i = 0;
+  i = 0;  // weight index
   for (auto& [distance, wind] : distance_to_wind) {
-    windspeed_ms += W[i] * wind.vector();
+    windspeed_ms += W[i] * wind.velocity();
     i++;
   }
 
