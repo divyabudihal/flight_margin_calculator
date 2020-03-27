@@ -1,4 +1,4 @@
-discretization_frequency_hz: 0.1
+discretization_frequency_hz: 10
 wind_radius_km: 0.3
 wind_max_neighbours: 5
 

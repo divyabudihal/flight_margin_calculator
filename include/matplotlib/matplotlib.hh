@@ -840,8 +840,8 @@ bool quiver(const std::vector<NumericX>& x, const std::vector<NumericY>& y, cons
     PyDict_SetItemString(kwargs, std::string("scale").c_str(), PyLong_FromLong(1));
     // PyDict_SetItemString(kwargs, std::string("width").c_str(), PyLong_FromLong(0.8));
     PyDict_SetItemString(kwargs, std::string("headwidth").c_str(), PyLong_FromLong(2));
-    PyDict_SetItemString(kwargs, std::string("headlength").c_str(), PyLong_FromLong(2));
-    PyDict_SetItemString(kwargs, std::string("headaxislength").c_str(), PyLong_FromLong(2));
+    PyDict_SetItemString(kwargs, std::string("headlength").c_str(), PyLong_FromLong(1.2));
+    PyDict_SetItemString(kwargs, std::string("headaxislength").c_str(), PyLong_FromLong(1.5));
 
     PyObject* res = PyObject_Call(
             detail::_interpreter::get().s_python_function_quiver, plot_args, kwargs);

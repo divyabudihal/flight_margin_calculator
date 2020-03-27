@@ -47,10 +47,16 @@ double FlightMargin::RemainingBattery(
     const std::vector<Wind> winds, const double& airspeed_mag_ms,
     const double& required_power_Wh) const {
   double flight_time_s = 0;
+  // Declare flight plotting tool
   FlightPlotter flight_plotter(waypoints, winds);
+
+  // Pre-calculate the semivariogram values for the winds needed or the Ordinary
+  // Kriging Model to be used to calculate wind vectors for each segment
+  auto semivariogram_winds = WindSemivariogramMatrix(winds);
+
   for (unsigned int index = 1; index < waypoints.size(); index++) {
     flight_time_s += PathFlightTime(waypoints[index - 1], waypoints[index],
-                                    airspeed_mag_ms, winds, flight_plotter);
+                                    airspeed_mag_ms, winds, semivariogram_winds, flight_plotter);
   }
 
   // Calculate energy usage based on time
@@ -68,6 +74,7 @@ double FlightMargin::RemainingBattery(
  * @param end_path Waypoint at end of path
  * @param airspeed_mag_ms Desired airspeed magnitude in m/s
  * @param winds Vector of Wind objects representing winds in the area
+ * @param semivariogram_winds A matrix of semivariogram values for all of the winds
  *
  * @return Flight time required ofr this path
  *
@@ -76,6 +83,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
                                     const Eigen::Vector2d& end_path,
                                     const double& airspeed_mag_ms,
                                     const std::vector<Wind> winds,
+                                    const Eigen::MatrixXd& semivariogram_winds,
                                     FlightPlotter& flight_plotter) const {
   // Approximate discretization of path into segments using airspeed an
   // discretization frequency
@@ -86,7 +94,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
 
   // Split path into segments using discretization frequency
   unsigned int N_segments =
-      (path_distance / airspeed_mag_ms) / discretization_frequency_hz_;
+      (path_distance / airspeed_mag_ms) * discretization_frequency_hz_;
   auto segment_increment = path / N_segments;
   double segment_distance = segment_increment.norm();
   auto unit_segment = segment_increment / segment_distance;
@@ -95,6 +103,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
   // Initalize path flight time and starting segment position
   double path_flight_time_s = 0;
   auto start_segment = start_path;
+
   for (unsigned int i = 0; i < N_segments; i++) {
     auto end_segment = start_segment + segment_increment;
 
@@ -104,7 +113,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
     double segment_flight_time;
 
     // Calculate windspeed vector
-    auto windspeed_ms = CalculateWindVector(end_segment, winds);
+    auto windspeed_ms = CalculateWindVector(end_segment, winds, semivariogram_winds);
 
     // In order to keep airspeed constant,
     // Ground speed = segment air speed - wind speed
@@ -171,6 +180,7 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
  * @param position x and y position at which to calculate a wind vector
  * @param winds A vector of Wind objects representing the measured winds in the
  * area
+ * @param semivariogram_winds A matrix of semivariogram values for all of the winds
  *
  * @return The computed wind vector for that location based on the Ordinary
  * Kriging model. Returns a 0 vector if no winds are present in the radius, and
@@ -178,17 +188,17 @@ double FlightMargin::PathFlightTime(const Eigen::Vector2d& start_path,
  *
  */
 Eigen::Vector2d FlightMargin::CalculateWindVector(
-    const Eigen::Vector2d& position, const std::vector<Wind>& winds) const {
+    const Eigen::Vector2d& position, const std::vector<Wind>& winds, const Eigen::MatrixXd& semivariogram_winds) const {
   // Assume no duplicated wind points
   // Use Kriging model to compute wind vector
 
   // Find all wind vectors within the wind radius and record the distance to
-  // them
-  std::vector<std::pair<double, Wind>> distance_to_wind;
-  for (auto const& wind : winds) {
-    double distance = (wind.origin() - position).norm();
+  // them. Use a tuple to store the distance, wind object, and index of wind object
+  std::vector<std::tuple<double, Wind, unsigned int>> distance_to_wind;
+  for (unsigned int i = 0; i < winds.size(); i++) {
+    double distance = (winds[i].origin() - position).norm();
     if (distance <= wind_radius_m_) {
-      distance_to_wind.push_back({distance, wind});
+      distance_to_wind.push_back(std::make_tuple(distance, winds[i], i));
     }
   }
 
@@ -199,13 +209,13 @@ Eigen::Vector2d FlightMargin::CalculateWindVector(
   } else if (distance_to_wind.size() == 1) {
     // Return the only wind vector as there is no way to approximate the spatial
     // distribution of the winds
-    auto wind = distance_to_wind.begin()->second;
+    auto wind = std::get<Wind>(distance_to_wind[0]);
     return wind.velocity();
   }
 
   // Sort the winds based on closest distance
   std::sort(distance_to_wind.begin(), distance_to_wind.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
+            [](const auto& a, const auto& b) { return std::get<double>(a) < std::get<double>(b); });
 
   // Ensure only configured maximum number of neighbours are considered
   if (distance_to_wind.size() > wind_max_neighbours_) {
@@ -217,40 +227,35 @@ Eigen::Vector2d FlightMargin::CalculateWindVector(
   unsigned int N_winds =
       distance_to_wind.size();  // Number of wind vectors to be considered
 
-  // For the kriging model, C * W = D where:
+  // For the ordinary kriging model, C * W = D where:
   // C is an (N + 1) x (N + 1) matrix of semivariogram values corresponding to
   // distances between wind vectors with a Lagrangian multiplier W is a weight
   // matrix (to be solved for) D is a column vector of semivariogram values
   // corresponding to the position and distances to wind vectors For more
   // information, visit:
   // spatial-analyst.net/ILWIS/htm/ilwisapp/kriging_algorithm.htm
+  
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(N_winds + 1, N_winds + 1);
   // Set last row and column to ones for Lagrangian multiplier
   C.row(N_winds).setOnes();
   C.col(N_winds).setOnes();
 
-  // Fill in C matrix
-  int i = 0;
-  for (auto w_i = distance_to_wind.begin(); w_i != distance_to_wind.end();
-       w_i++) {
-    int j = i + 1;
-    for (auto w_j = std::next(w_i); w_j != distance_to_wind.end(); w_j++) {
-      double distance_ij = (w_i->second.origin() - w_j->second.origin()).norm();
-      // Calculate semivariogram value for this pair
-      double sv_value = semivariogram_.Calculate(distance_ij);
-      C(i, j) = sv_value;
-      C(j, i) = sv_value;
-      j++;
+  // Fill in C matrix using semivariogram_winds matrix
+  for (auto i = 0; i < N_winds; i++) {
+    for (auto j = i + 1; j < N_winds; j++) {
+      auto wi_index = std::get<unsigned int>(distance_to_wind[i]);
+      auto wj_index = std::get<unsigned int>(distance_to_wind[j]);
+      C(i, j) = semivariogram_winds(wi_index, wj_index);
+      C(j, i) =  C(i, j);  // C is a symmetrical matrix
     }
-    i++;
   }
 
   // Fill in D column vector
   Eigen::VectorXd D(N_winds + 1);
   D(N_winds) = 1;
 
-  i = 0;
-  for (auto& [distance, wind] : distance_to_wind) {
+  int i = 0;
+  for (auto& [distance, wind, index] : distance_to_wind) {
     D[i] = semivariogram_.Calculate(distance);
     i++;
   }
@@ -261,10 +266,36 @@ Eigen::Vector2d FlightMargin::CalculateWindVector(
   // Apply Weights to each wind velocity and sum
   Eigen::Vector2d windspeed_ms(0, 0);
   i = 0;  // weight index
-  for (auto& [distance, wind] : distance_to_wind) {
+  for (auto& [distance, wind, index] : distance_to_wind) {
     windspeed_ms += W[i] * wind.velocity();
     i++;
   }
 
   return windspeed_ms;
+}
+
+/**
+ * @brief This function calculates a symmetrical matrix of semivariogram values for the given winds.
+ * 
+ * @param winds A vector of Wind objects representing the winds in the area.
+ * 
+ * @return An NxN matrix where N is the number of winds with all of the semivariogram values
+ * 
+ */ 
+Eigen::MatrixXd FlightMargin::WindSemivariogramMatrix(
+    const std::vector<Wind> winds) const {
+  auto N_winds = winds.size();
+  Eigen::MatrixXd semivariogram_winds = Eigen::MatrixXd::Zero(N_winds, N_winds);
+
+  // Fill matrix with semivariogram values
+  for (unsigned int i = 0; i < N_winds; i++) {
+    for (unsigned int j = i + 1; j < N_winds; j++) {
+      double distance_ij = (winds[i].origin() - winds[j].origin()).norm();
+      // Calculate semivariogram value for this pair
+      double sv_value = semivariogram_.Calculate(distance_ij);
+      semivariogram_winds(i, j) = sv_value;
+      semivariogram_winds(j, i) = sv_value;
+    }
+  }
+  return semivariogram_winds;
 }

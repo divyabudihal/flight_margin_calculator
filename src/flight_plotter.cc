@@ -70,17 +70,20 @@ void FlightPlotter::AddData(const Eigen::Vector2d& start_segment,
  *
  */
 void FlightPlotter::Plot() const {
+  
+  double padding = 1000;
+  double min_x = *(std::min_element(x_waypoints_.begin(), x_waypoints_.end()));
+  double max_x = *(std::max_element(x_waypoints_.begin(), x_waypoints_.end()));
+  double min_y = *(std::min_element(y_waypoints_.begin(), y_waypoints_.end()));
+  double max_y = *(std::max_element(y_waypoints_.begin(), y_waypoints_.end()));
+
   plt::figure();
   plt::title(
       "Distance Travel vectors in the xy plane(m): Black: Air, Red: Ground, "
       "Green: Wind");
   plt::xlabel("x coordinate (m)");
   plt::ylabel("y coordinate (m)");
-  double padding = 10;
-  double min_x = *(std::min_element(x_waypoints_.begin(), x_waypoints_.end()));
-  double max_x = *(std::max_element(x_waypoints_.begin(), x_waypoints_.end()));
-  double min_y = *(std::min_element(y_waypoints_.begin(), y_waypoints_.end()));
-  double max_y = *(std::max_element(y_waypoints_.begin(), y_waypoints_.end()));
+  
 
   plt::xlim(min_x - padding, max_x + padding);
   plt::ylim(min_y - padding, max_y + padding);
@@ -112,6 +115,9 @@ void FlightPlotter::Plot() const {
   plt::xlabel("x coordinate (m)");
   plt::ylabel("y coordinate (m)");
 
+  plt::xlim(min_x - padding, max_x + padding);
+  plt::ylim(min_y - padding, max_y + padding);
+  
   // Plot wind data
   plt::quiver(x_wind_data_origin_, y_wind_data_origin_, u_wind_data_velocity_,
               v_wind_data_velocity_,

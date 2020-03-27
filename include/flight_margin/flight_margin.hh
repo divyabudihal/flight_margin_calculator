@@ -38,12 +38,16 @@ class FlightMargin {
   // Utility semivariogram class
   util::Semivariogram semivariogram_;
 
+  // Calculations
   double PathFlightTime(const Eigen::Vector2d& start,
                         const Eigen::Vector2d& end, const double& airspeed,
                         const std::vector<Wind> winds,
+                        const Eigen::MatrixXd& semivariogram_winds,
                         FlightPlotter& flight_plotter) const;
-  Eigen::Vector2d CalculateWindVector(const Eigen::Vector2d& position,
-                                      const std::vector<Wind>& winds) const;
+  Eigen::Vector2d CalculateWindVector(
+      const Eigen::Vector2d& position, const std::vector<Wind>& winds,
+      const Eigen::MatrixXd& semivariogram_winds) const;
+  Eigen::MatrixXd WindSemivariogramMatrix(const std::vector<Wind> winds) const;
 };
 
 }  // namespace flight_margin
